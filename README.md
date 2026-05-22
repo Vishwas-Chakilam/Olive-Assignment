@@ -1,83 +1,161 @@
 # Ollive Inference Platform
 
-A production-minded LLM chat application with **inference observability**: a logging SDK wraps every model call, ships metadata to an ingestion API, and persists telemetry for analytics dashboards.
+Production-oriented LLM chat platform with real-time inference observability, ingestion pipelines, and analytics.
 
-Built for the Ollive engineering assignment — focused on **system design, logging pipelines, and schema tradeoffs**, not just a chatbot UI.
+This project was built for the Ollive engineering assignment with a focus on:
+
+- LLM infrastructure design
+- inference logging
+- telemetry pipelines
+- schema tradeoffs
+- scalable backend architecture
+
+The goal was to build more than a chatbot — the system demonstrates how modern LLM applications instrument, ingest, and analyze inference traffic in production environments.
 
 ---
 
-## Architecture
+# System Architecture
 
 ```text
-Frontend (Next.js) → Backend API (FastAPI) → SDK Wrapper → Ingestion (POST /logs) → Database
-                                                                              ├── MySQL (local dev)
-                                                                              └── PostgreSQL (Docker Compose)
+Frontend (Next.js)
+        ↓
+FastAPI Chat API
+        ↓
+Instrumented LLM SDK
+        ↓
+LLM Provider (OpenAI / Anthropic / Gemini / Mock)
+        ↓
+Async Log Shipping
+        ↓
+Ingestion API (/logs)
+        ↓
+Database
 ```
 
-| Layer | Responsibility |
-|-------|----------------|
-| **Frontend** | Chat UI, conversation sidebar, cancel, SSE streaming, metrics dashboard |
-| **Chat API** | Conversations, multi-turn context (last 10 msgs), provider routing |
-| **SDK** | `InstrumentedLLMClient` — latency, tokens, status, previews, async log shipping |
-| **Ingestion** | `POST /logs` — validate & store inference metadata |
-| **Database** | `conversations`, `chat_messages`, `inference_logs` |
+## Architecture Overview
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for ingestion flow, logging strategy, scaling, and failure handling.
+| Component | Responsibility |
+|---|---|
+| Frontend | Chat UI, conversation management, streaming responses, dashboards |
+| Chat API | Conversation lifecycle, provider routing, context handling |
+| Instrumented SDK | Captures latency, token usage, status, previews, timestamps |
+| Ingestion Service | Validates and persists telemetry |
+| Database | Stores conversations, messages, and inference metadata |
 
----
-
-## Features
-
-### Required
-- Multi-turn chat with short context window
-- Inference logging SDK (metadata capture + near-real-time ingestion)
-- Ingestion pipeline with Pydantic validation
-- Relational storage for messages + inference logs (MySQL or PostgreSQL via SQLAlchemy)
-
-### Auth & UI
-- **JWT authentication** — register, login, protected chat
-- **Per-user conversations** scoped by `user_id`
-- **Profile & settings** — display name, bio, default provider/model
-- **Modern multi-page UI** — landing, login, chat, metrics, profile
-
-### Bonus (implemented)
-- **Docker Compose** — one-command setup
-- **Streaming** — Server-Sent Events from `POST /chat`
-- **Multi-provider** — OpenAI, Anthropic, Gemini + Mock (no API key)
-- **Dashboard** — latency, throughput, error rate (Recharts)
-- **PII redaction** — email/phone/SSN stripped from log previews
-- **Cancel request** — `AbortController` on frontend
+Additional architecture details are documented in `ARCHITECTURE.md`.
 
 ---
 
-## Quick Start (Docker)
+# Features
 
-**Prerequisites:** Docker Desktop
+## Core Requirements
+
+- Multi-turn conversations
+- Short conversational memory window
+- Streaming chat responses
+- Inference logging middleware
+- Near real-time ingestion pipeline
+- Metadata extraction and storage
+- Relational schema design
+- Analytics endpoints
+
+---
+
+## Authentication & User Features
+
+- JWT authentication
+- User registration & login
+- Per-user conversation history
+- Resume conversations
+- Delete conversations
+- Profile & settings pages
+
+---
+
+## Observability Features
+
+The SDK captures:
+
+- provider
+- model
+- latency
+- token usage
+- timestamps
+- request status
+- error messages
+- conversation/session IDs
+- request/response previews
+
+Logs are asynchronously sent to the ingestion API to avoid blocking inference responses.
+
+---
+
+## Bonus Features Implemented
+
+- Multi-provider support
+- Streaming responses (SSE)
+- Docker Compose setup
+- Metrics dashboard
+- PII redaction
+- Cancel active requests
+- Mock provider for local evaluation
+
+---
+
+# Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js, TailwindCSS, Recharts |
+| Backend | FastAPI |
+| ORM | SQLAlchemy |
+| Validation | Pydantic |
+| Database | MySQL / PostgreSQL |
+| Streaming | Server-Sent Events |
+| Authentication | JWT |
+| Containers | Docker Compose |
+
+---
+
+# Quick Start (Docker)
+
+## Prerequisites
+
+- Docker Desktop
+- Git
+
+---
+
+## Run the Project
 
 ```bash
 git clone <your-repo-url>
 cd CHATBOT
+
 cp .env.example .env
-# Optional: add OPENAI_API_KEY and set DEFAULT_PROVIDER=openai
 
 docker compose up --build
 ```
 
+---
+
+## Application URLs
+
 | Service | URL |
-|---------|-----|
-| Home | http://localhost:3000 |
+|---|---|
+| Frontend | http://localhost:3000 |
 | Login | http://localhost:3000/login |
 | Chat | http://localhost:3000/chat |
-| Profile | http://localhost:3000/profile |
-| Settings | http://localhost:3000/settings |
 | Dashboard | http://localhost:3000/dashboard |
-| API docs | http://localhost:8000/docs |
+| API Docs | http://localhost:8000/docs |
 
-**Demo without API keys:** defaults to `mock` provider — fully functional for evaluation.
+---
 
-**Database in Docker:** `docker-compose.yml` runs **PostgreSQL 16**. Tables are created automatically on backend startup.
+## Default Behavior
 
-**With OpenAI:**
+The application defaults to the mock provider, allowing the project to run without external API keys.
+
+To use OpenAI:
 
 ```env
 OPENAI_API_KEY=sk-...
@@ -87,112 +165,102 @@ DEFAULT_MODEL=gpt-4o-mini
 
 ---
 
-## Database
+# Database Configuration
 
-| Environment | Engine | Connection string (example) |
-|-------------|--------|-----------------------------|
-| **Local dev (recommended)** | MySQL 8 | `mysql+aiomysql://root:PASSWORD@localhost:3306/ollive` |
-| **Docker Compose** | PostgreSQL 16 | `postgresql+asyncpg://ollive:ollive@db:5432/ollive` |
-| **Optional fallback** | SQLite | `sqlite+aiosqlite:///./backend/data/ollive.db` |
-
-Copy `.env.example` to `.env` at the repo root (gitignored). Use URL-encoded passwords in `DATABASE_URL` if they contain special characters (`@`, `$`, etc.).
-
----
-
-## Local Development (without Docker)
-
-### Windows quick start (recommended)
-
-**1. MySQL** — create database (MySQL Workbench or CLI):
-
-```sql
-CREATE DATABASE IF NOT EXISTS ollive CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-```
-
-**2. Configure** — copy `.env.example` to `.env` at the repo root and set MySQL credentials:
+## Local Development (MySQL)
 
 ```env
 DATABASE_URL=mysql+aiomysql://root:YOUR_PASSWORD@localhost:3306/ollive
-JWT_SECRET=change-me-to-a-long-random-secret-key
 ```
 
-**3. Start** — use **Command Prompt** (`.bat` files avoid PowerShell script blocks):
+---
 
-```cmd
-scripts\start-backend.bat
+## Docker Compose (PostgreSQL)
+
+```env
+DATABASE_URL=postgresql+asyncpg://ollive:ollive@db:5432/ollive
 ```
 
-Second terminal:
+---
 
-```cmd
-scripts\start-frontend.bat
+## SQLite Fallback
+
+```env
+DATABASE_URL=sqlite+aiosqlite:///./backend/data/ollive.db
 ```
 
-Verify: http://localhost:8000/health → `"database": "connected"`
+---
 
-**Upgrading an existing MySQL database?** Run:
+# Local Development Setup
 
-```bash
-mysql -u root -p < backend/db/migrate_add_users.sql
+## 1. Create Database
+
+```sql
+CREATE DATABASE IF NOT EXISTS ollive
+CHARACTER SET utf8mb4
+COLLATE utf8mb4_unicode_ci;
 ```
 
-Then restart the backend (creates any missing tables via SQLAlchemy).
+---
 
-If `Activate.ps1` fails with *running scripts is disabled*, do **not** use `activate` — use the scripts above or:
+## 2. Configure Environment
 
-```powershell
-backend\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
+Copy `.env.example` to `.env`.
+
+Example:
+
+```env
+DATABASE_URL=mysql+aiomysql://root:PASSWORD@localhost:3306/ollive
+JWT_SECRET=change-this-secret
 ```
 
-### Backend (manual)
+---
+
+## 3. Start Backend
 
 ```bash
 cd backend
+
 python -m venv .venv
-# Windows — install into venv without activating:
+
+# Windows
 .venv\Scripts\pip install -r requirements.txt
 
-set PYTHONPATH=%CD%\backend
-set DATABASE_URL=mysql+aiomysql://root:YOUR_PASSWORD@localhost:3306/ollive
-set INGESTION_URL=http://localhost:8000/logs
-set JWT_SECRET=change-me-to-a-long-random-secret-key
 .venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
 ```
 
-For PostgreSQL instead of MySQL, run Postgres locally or use `docker compose up db` and set `DATABASE_URL=postgresql+asyncpg://ollive:ollive@localhost:5432/ollive`.
+---
 
-### Frontend
+## 4. Start Frontend
 
 ```bash
 cd frontend
+
 npm install
-set NEXT_PUBLIC_API_URL=http://localhost:8000
 npm run dev
 ```
 
 ---
 
-## API Endpoints
+# API Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/auth/register` | Create account |
-| `POST` | `/auth/login` | Login (JWT) |
-| `GET` | `/auth/me` | Current user profile |
-| `POST` | `/chat` | Send message (JSON or SSE stream) |
-| `GET` | `/conversations` | List conversations |
-| `GET` | `/conversations/{id}` | Get messages |
-| `DELETE` | `/conversations/{id}` | Delete conversation |
-| `POST` | `/logs` | Ingestion endpoint (SDK target) |
-| `GET` | `/metrics` | Aggregated observability metrics |
-| `GET` | `/providers` | List providers + default models |
-| `GET` | `/health` | Health check |
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/auth/register` | Register user |
+| POST | `/auth/login` | Login |
+| GET | `/auth/me` | Current user |
+| POST | `/chat` | Send chat message |
+| GET | `/conversations` | List conversations |
+| GET | `/conversations/{id}` | Get conversation |
+| DELETE | `/conversations/{id}` | Delete conversation |
+| POST | `/logs` | Ingestion endpoint |
+| GET | `/metrics` | Observability metrics |
+| GET | `/providers` | Available providers |
+| GET | `/health` | Health check |
 
 ---
 
-## SDK Usage
-
-The core assignment artifact — wrap any provider call:
+# SDK Example
 
 ```python
 from app.providers.registry import get_provider
@@ -204,79 +272,121 @@ client = InstrumentedLLMClient(provider)
 
 result = await client.generate(
     model="gpt-4o-mini",
-    messages=[LLMMessage(role="user", content="Hello")],
-    conversation_id=conversation_uuid,
-    request_id=request_uuid,
+    messages=[
+        LLMMessage(role="user", content="Hello")
+    ],
+    conversation_id=conversation_id,
+    request_id=request_id,
 )
-# Logs are sent asynchronously to POST /logs — never blocks the response
 ```
 
-Captured metadata: `request_id`, `conversation_id`, `provider`, `model`, token counts, `latency_ms`, `status`, `error_message`, redacted previews, timestamp.
+Inference logs are asynchronously sent to:
+
+```text
+POST /logs
+```
+
+Captured metadata includes:
+
+- request ID
+- conversation ID
+- provider
+- model
+- token counts
+- latency
+- timestamps
+- status/errors
+- redacted previews
 
 ---
 
-## Database Schema
+# Database Schema
 
 ```sql
--- users (JWT auth)
-id UUID PK, email, username, hashed_password, display_name, bio,
-default_provider, default_model, theme, created_at
+-- users
+id UUID PRIMARY KEY,
+email,
+username,
+hashed_password,
+display_name,
+bio,
+default_provider,
+default_model,
+created_at
 
 -- conversations
-id UUID PK, user_id FK (nullable for legacy rows), title, created_at, updated_at
+id UUID PRIMARY KEY,
+user_id,
+title,
+created_at,
+updated_at
 
 -- chat_messages
-id UUID PK, conversation_id FK, role, content, timestamp
+id UUID PRIMARY KEY,
+conversation_id,
+role,
+content,
+timestamp
 
 -- inference_logs
-id UUID PK, request_id, conversation_id FK (nullable, ON DELETE SET NULL),
-provider, model, prompt_tokens, completion_tokens, total_tokens,
-latency_ms, status, error_message, input_preview, output_preview, created_at
+id UUID PRIMARY KEY,
+request_id,
+conversation_id,
+provider,
+model,
+prompt_tokens,
+completion_tokens,
+total_tokens,
+latency_ms,
+status,
+error_message,
+input_preview,
+output_preview,
+created_at
 ```
 
-**Tradeoffs:**
-- Previews instead of full prompts → storage cost & privacy
-- Append-only logs → simple analytics, no update races
-- Direct HTTP ingestion vs Kafka → faster to ship; document upgrade path in ARCHITECTURE.md
+---
+
+# Engineering Tradeoffs
+
+| Decision | Reason |
+|---|---|
+| HTTP ingestion over Kafka | Faster implementation for assignment scope |
+| Monolithic backend | Simpler deployment and reduced operational overhead |
+| Async fire-and-forget logging | Observability failures never block user responses |
+| Log previews instead of full prompts | Better privacy and lower storage costs |
+| Mock provider default | Evaluators can run locally without API keys |
 
 ---
 
-## Tradeoffs
+# Scaling Considerations
 
-| Decision | Why |
-|----------|-----|
-| HTTP ingestion vs message queue | Simpler for assignment; Kafka noted for production |
-| Monolith backend | Chat + ingestion share DB; easy deploy |
-| Mock provider default | Evaluators can run without secrets |
-| Log after stream completes | Accurate token/latency for streaming |
-| Fire-and-forget logging | User latency unaffected by observability path |
+Future production improvements:
 
----
-
-## What I'd Improve With More Time
-
-1. **Kafka ingestion** — buffer logs, replay on failure, horizontal consumers
-2. **OpenTelemetry** — trace IDs linking frontend → chat → SDK → ingestion
-3. **Rate limiting & tenant API keys** — JWT exists; add per-tenant quotas
-4. **Log retention policies** — partition `inference_logs` by month
-5. **Integration tests** — SDK contract tests + ingestion idempotency
-6. **Hosted demo** — Fly.io / Railway deployment with CI
+1. Kafka or RabbitMQ ingestion pipeline
+2. OpenTelemetry distributed tracing
+3. Rate limiting and tenant quotas
+4. Partitioned log tables
+5. Retry queues and dead-letter handling
+6. CI/CD deployment pipelines
+7. Kubernetes deployment
+8. Horizontal ingestion workers
 
 ---
 
-## Project Structure
+# Project Structure
 
 ```text
 CHATBOT/
-├── frontend/          # Next.js + Tailwind + Recharts dashboard
+├── frontend/
 ├── backend/
 │   └── app/
-│       ├── api/       # chat, conversations, logs, metrics
-│       ├── sdk/       # InstrumentedLLMClient + PII redaction
-│       ├── ingestion/ # log persistence handler
-│       ├── providers/ # OpenAI, Anthropic, Gemini, Mock
-│       ├── services/  # chat + metrics business logic
-│       └── db/        # SQLAlchemy models
+│       ├── api/
+│       ├── sdk/
+│       ├── ingestion/
+│       ├── providers/
+│       ├── services/
+│       └── db/
 ├── docker-compose.yml
 ├── README.md
 └── ARCHITECTURE.md
@@ -284,19 +394,21 @@ CHATBOT/
 
 ---
 
-## Submission Checklist
+# Submission Checklist
 
-- [x] GitHub repository with full source
-- [x] README (setup, architecture, schema, tradeoffs)
-- [x] ARCHITECTURE.md (ingestion, logging, scaling, failures)
-- [ ] Demo link / screenshots / Loom (add after deploy)
-
-**Submit to:** work@ollive.ai
+- [x] Multi-turn chatbot
+- [x] Inference logging SDK
+- [x] Ingestion API
+- [x] Relational database schema
+- [x] Dashboard metrics
+- [x] Docker Compose setup
+- [x] Multi-provider support
+- [x] Streaming responses
+- [x] Authentication
+- [ ] Hosted demo / Loom video
 
 ---
 
-## License
+# License
 
-MIT — built as a take-home assignment submission.
-#   O l i v e - A s s i g n m e n t  
- 
+MIT License
